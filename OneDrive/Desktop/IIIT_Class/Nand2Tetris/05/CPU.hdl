@@ -1,0 +1,92 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/5/CPU.hdl
+/**
+ * The Hack Central Processing unit (CPU).
+ * Parses the binary code in the instruction input and executes it according to the
+ * Hack machine language specification. In the case of a C-instruction, computes the
+ * function specified by the instruction. If the instruction specifies to read a memory
+ * value, the inM input is expected to contain this value. If the instruction specifies
+ * to write a value to the memory, sets the outM output to this value, sets the addressM
+ * output to the target address, and asserts the writeM output (when writeM = 0, any
+ * value may appear in outM).
+ * If the reset input is 0, computes the address of the next instruction and sets the
+ * pc output to that value. If the reset input is 1, sets pc to 0.
+ * Note: The outM and writeM outputs are combinational: they are affected by the
+ * instruction's execution during the current cycle. The addressM and pc outputs are
+ * clocked: although they are affected by the instruction's execution, they commit to
+ * their new values only in the next cycle.
+ */
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // Put your code here:
+
+    // input
+    Or16(a=instruction, b=instruction, 
+         out[15]=isC,
+         out[12]=instruction12,
+         out[11]=instruction11,
+         out[10]=instruction10,
+         out[9]=instruction9,
+         out[8]=instruction8,
+         out[7]=instruction7,
+         out[6]=instruction6,
+         out[5]=instruction5,
+         out[4]=instruction4,
+         out[3]=instruction3,
+         out[2]=instruction2,
+         out[1]=instruction1,
+         out[0]=instruction0);
+    Not(in=isC, out=isA);
+
+    // A register and its input mux
+    Mux16(sel=isA, a=aluOut, b=instruction, out=aMuxOut);
+    And(a=isC, b=instruction5, out=isCAndIns5);
+    Or(a=isA, b=isCAndIns5, out=aRegLoad);
+    ARegister(in=aMuxOut, load=aRegLoad, 
+              out=aRegOut, out[0..14]=addressM);
+
+    // D register
+    And(a=isC, b=instruction4, out=dRegLoad);
+    DRegister(in=aluOut, load=dRegLoad, out=dRegOut);
+
+    // b Mux
+    Mux16(a=aRegOut, b=inM, sel=instruction12, out=bMuxOut);
+
+    // ALU
+    ALU(x=dRegOut, y=bMuxOut, 
+        zx=instruction11,
+        nx=instruction10,
+        zy=instruction9,
+        ny=instruction8,
+        f=instruction7,
+        no=instruction6,
+        out=outM,
+        out=aluOut,
+        zr=aluZrOut, 
+        ng=aluNgOut);
+    And(a=isC, b=instruction3, out=writeM);
+
+    // PC
+    And(a=instruction2, b=aluNgOut, out=jp1);
+    And(a=instruction1, b=aluZrOut, out=jp2);
+    Or(a=aluNgOut, b=aluZrOut, out=orNgZr);
+    Not(in=orNgZr, out=notOrNgZr);
+    And(a=instruction0, b=notOrNgZr, out=jp3);
+    Or8Way(in[0]=jp1, in[1]=jp2, in[2]= jp3, in[3]=false, out=orJp);
+    And(a=isC, b=orJp, out=pcLoad);
+    PC(in=aRegOut, inc=true, load=pcLoad, reset=reset, out[0..14]=pc);
+}
